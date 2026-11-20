@@ -8,7 +8,7 @@ Spring Cloud Gateway на WebFlux, Spring Boot 3.5, Java 21.
 
 | Що | Як | Де в коді |
 | -- | -- | --------- |
-| Маршрути | Таблиця шлях → сервіс за 9.2–9.5; шлях іде в сервіс без змін. Шляху, якого немає в таблиці, шлюз не пропускає (404) | `routing/RouteTable` |
+| Маршрути | Таблиця шлях → сервіс за 9.2–9.5; шлях іде в сервіс без змін. Шляху, якого немає в таблиці, шлюз не пропускає (404). Один шлях ділиться за методом: `POST /shipments` — shipment-service, `GET /shipments` (дашборд «мені / від мене») — tracking-service | `routing/RouteTable` |
 | JWT | Підпис за JWKS realm-у `kite`, `iss`, строк дії, audience `kite-api`. Публічні шляхи 9.2 (`security: []` в OpenAPI) — без токена; токен там навіть не розбирається, щоб прострочений не заважав `/auth/refresh`. Ролі перевіряють самі сервіси: токен іде до них як є | `security/SecurityConfig` |
 | Rate limit | Token bucket у Redis на `sub` з токена або на IP. `default` — 20 запитів/с, сплеск 40; `auth` (вхід) — 10 на хвилину. Без Redis ліміт не діє, але API працює | `ratelimit/RateLimitFilter` |
 | Тайм-аути | 2 с на з'єднання і на відповідь сервіса (5.4, п. 7) → 504 | `application.yml` |

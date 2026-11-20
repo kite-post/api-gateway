@@ -16,6 +16,7 @@ import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.core.ReactiveStringRedisTemplate;
 import org.springframework.data.redis.core.script.RedisScript;
+import org.springframework.http.HttpMethod;
 
 import ua.kite.apigateway.config.GatewayProperties;
 import ua.kite.apigateway.ratelimit.RateLimitFilter;
@@ -38,12 +39,17 @@ public class RoutesConfig {
         RouteLocatorBuilder.Builder routes = builder.routes();
         for (RouteTable.Route route : RouteTable.ROUTES) {
             RateLimitFilter rateLimit = new RateLimitFilter(limiter, route.bucket(), problems);
-            routes.route(
-                    route.id(),
-                    r -> r.path(route.paths().toArray(String[]::new))
-                            .filters(f -> f.filter(rateLimit)
-                                    .circuitBreaker(cb -> cb.setName(route.id()).setFallbackUri(FALLBACK)))
-                            .uri(props.service(route.service())));
+            routes.route(route.id(), r -> {
+                var predicate = route.methods().isEmpty()
+                        ? r.path(route.paths().toArray(String[]::new))
+                        : r.method(route.methods().toArray(HttpMethod[]::new))
+                                .and()
+                                .path(route.paths().toArray(String[]::new));
+                return predicate
+                        .filters(f -> f.filter(rateLimit)
+                                .circuitBreaker(cb -> cb.setName(route.id()).setFallbackUri(FALLBACK)))
+                        .uri(props.service(route.service()));
+            });
         }
         return routes.build();
     }

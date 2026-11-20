@@ -2,7 +2,9 @@ package ua.kite.apigateway.routing;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 
+import org.springframework.http.HttpMethod;
 import org.springframework.http.server.PathContainer;
 import org.springframework.web.util.pattern.PathPatternParser;
 
@@ -12,6 +14,11 @@ import org.springframework.web.util.pattern.PathPatternParser;
  * <p>Порядок важливий: перший збіг виграє, тож вужчі шляхи стоять перед ширшими ({@code
  * /me/bonuses} до {@code /me/**}, {@code /shipments/{id}/timeline} до {@code /shipments/**}).
  * Шлях іде в сервіс без змін — сервіси самі слухають під {@code /api/v1}.
+ *
+ * <p>Здебільшого шлях належить одному сервісу цілком. Виняток — колекція {@code /shipments}:
+ * {@code POST} (створити) — shipment-service, власник стану, а {@code GET} (дашборд «мені / від
+ * мене / архів») — tracking-service, власник проєкцій читання (5.1, 8.1). Такі маршрути мають
+ * {@code methods}; порожній набір — будь-який метод.
  *
  * <p>Нового ендпоїнта, якого тут немає, шлюз не пропустить: він відповість 404. Це свідомо —
  * назовні виходить лише те, що описано в контракті.
@@ -31,7 +38,12 @@ public final class RouteTable {
     public static final List<String> PUBLIC_PATHS =
             List.of("/api/v1/auth/otp", "/api/v1/auth/otp/verify", "/api/v1/auth/refresh", "/api/v1/public/**");
 
-    public record Route(String id, String service, String bucket, List<String> paths) {}
+    public record Route(String id, String service, String bucket, Set<HttpMethod> methods, List<String> paths) {
+
+        boolean accepts(HttpMethod method) {
+            return methods.isEmpty() || methods.contains(method);
+        }
+    }
 
     public static final List<Route> ROUTES = List.of(
             // 9.2 Публічні та автентифікація
@@ -45,6 +57,8 @@ public final class RouteTable {
             route("me-external-tracking", "tracking", "/api/v1/me/external-tracking/**"),
             route("me", "customer", "/api/v1/me/**"),
             route("shipment-timeline", "tracking", "/api/v1/shipments/*/timeline"),
+            // Дашборд — проєкція party_shipment_index у tracking (6.2); лише сама колекція, без /**.
+            routeFor("shipments-dashboard", "tracking", HttpMethod.GET, "/api/v1/shipments"),
             route("shipments", "shipment", "/api/v1/shipments/**"),
             route("payments", "payment", "/api/v1/payments/**"),
             route("promo-codes", "pricing", "/api/v1/promo-codes/**"),
@@ -89,17 +103,24 @@ public final class RouteTable {
     private RouteTable() {}
 
     private static Route route(String id, String service, String... paths) {
-        return new Route(id, service, DEFAULT_BUCKET, List.of(paths));
+        return new Route(id, service, DEFAULT_BUCKET, Set.of(), List.of(paths));
+    }
+
+    private static Route routeFor(String id, String service, HttpMethod method, String... paths) {
+        return new Route(id, service, DEFAULT_BUCKET, Set.of(method), List.of(paths));
     }
 
     private static Route authRoute(String id, String service, String... paths) {
-        return new Route(id, service, AUTH_BUCKET, List.of(paths));
+        return new Route(id, service, AUTH_BUCKET, Set.of(), List.of(paths));
     }
 
-    /** Який маршрут забере шлях — тим самим парсером, що й шлюз. Для тестів і діагностики. */
-    public static Optional<Route> match(String path) {
+    /**
+     * Який маршрут забере запит — тим самим парсером, що й шлюз. Для тестів і діагностики.
+     */
+    public static Optional<Route> match(HttpMethod method, String path) {
         PathContainer container = PathContainer.parsePath(path);
         return ROUTES.stream()
+                .filter(r -> r.accepts(method))
                 .filter(r -> r.paths().stream()
                         .anyMatch(
                                 p -> PathPatternParser.defaultInstance.parse(p).matches(container)))
