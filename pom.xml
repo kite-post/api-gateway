@@ -23,7 +23,7 @@
     <kite-contracts.version>0.2.1</kite-contracts.version>
     <palantir.version>2.103.0</palantir.version>
     <!-- Реліз Spring Cloud під Spring Boot 3.5. -->
-    <spring-cloud.version>2025.0.3</spring-cloud.version>
+    <spring-cloud.version>2025.1.4</spring-cloud.version>
   </properties>
 
   <dependencyManagement>
