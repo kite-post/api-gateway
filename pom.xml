@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+  <modelVersion>4.0.0</modelVersion>
+
+  <parent>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-parent</artifactId>
+    <version>3.5.16</version>
+    <relativePath/>
+  </parent>
+
+  <groupId>ua.kite</groupId>
+  <artifactId>api-gateway</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <name>api-gateway</name>
+  <description>Шлюз Kite: єдина точка входу /api/v1, перевірка JWT, rate limit, маршрутизація (5.1)</description>
+
+  <properties>
+    <java.version>21</java.version>
+    <spotless.version>3.11.0</spotless.version>
+    <!-- Контракти підключаються закріпленим тегом, а не плаваючою версією:
+         порядок наскрізної зміни — спершу тег у kite-contracts, потім тут (5.6). -->
+    <kite-contracts.version>0.2.1</kite-contracts.version>
+    <palantir.version>2.103.0</palantir.version>
+    <!-- Реліз Spring Cloud під Spring Boot 3.5. -->
+    <spring-cloud.version>2025.0.3</spring-cloud.version>
+  </properties>
+
+  <dependencyManagement>
+    <dependencies>
+      <dependency>
+        <groupId>org.springframework.cloud</groupId>
+        <artifactId>spring-cloud-dependencies</artifactId>
+        <version>${spring-cloud.version}</version>
+        <type>pom</type>
+        <scope>import</scope>
+      </dependency>
+    </dependencies>
+  </dependencyManagement>
+
+  <dependencies>
+    <!-- Моделі API, інтерфейси контролерів і класи подій CloudEvents.
+         Своїх копій openapi.yaml і JSON Schema сервіс не тримає (5.4, п. 6):
+         схеми теж приходять у цьому jar, у /kite/contracts/**. -->
+    <dependency>
+      <groupId>ua.kite</groupId>
+      <artifactId>kite-contracts</artifactId>
+      <version>${kite-contracts.version}</version>
+    </dependency>
+
+    <!-- Шлюз реактивний: Spring Cloud Gateway на WebFlux/Netty (5.1). -->
+    <dependency>
+      <groupId>org.springframework.cloud</groupId>
+      <artifactId>spring-cloud-starter-gateway-server-webflux</artifactId>
+    </dependency>
+    <!-- Перевірка JWT від Keycloak: підпис за JWKS, iss, exp, audience kite-api. -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+    </dependency>
+    <!-- Rate limit — RedisRateLimiter (token bucket у Redis). -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-data-redis-reactive</artifactId>
+    </dependency>
+    <!-- Circuit breaker і тайм-аут 2 с — Resilience4j (5.4, п. 7). -->
+    <dependency>
+      <groupId>org.springframework.cloud</groupId>
+      <artifactId>spring-cloud-starter-circuitbreaker-reactor-resilience4j</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-actuator</artifactId>
+    </dependency>
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-validation</artifactId>
+    </dependency>
+    <!-- Метрики віддаються Prometheus напряму (5.3). -->
+    <dependency>
+      <groupId>io.micrometer</groupId>
+      <artifactId>micrometer-registry-prometheus</artifactId>
+      <scope>runtime</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-starter-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <!-- Testcontainers уже на місці: щойно сервіс отримає свою базу,
+         інтеграційний тест піднімає Postgres контейнером (5.4, 12.6). -->
+    <dependency>
+      <groupId>org.springframework.boot</groupId>
+      <artifactId>spring-boot-testcontainers</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.testcontainers</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>io.projectreactor</groupId>
+      <artifactId>reactor-test</artifactId>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <repositories>
+    <!-- Maven-пакет kite-contracts живе в GitHub Packages; читати його можна
+         тільки з токеном, тож локально потрібен ~/.m2/settings.xml із сервером
+         github, а в CI його розставляє спільний workflow. -->
+    <repository>
+      <releases>
+        <enabled>true</enabled>
+      </releases>
+      <snapshots>
+        <enabled>false</enabled>
+      </snapshots>
+      <id>github</id>
+      <name>GitHub Packages (kite-post)</name>
+      <url>https://maven.pkg.github.com/kite-post/kite-contracts</url>
+    </repository>
+  </repositories>
+
+  <build>
+    <plugins>
+      <plugin>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-maven-plugin</artifactId>
+      </plugin>
+
+      <!-- Лінт: один формат на всі 12 Java-сервісів, без суперечок у PR. -->
+      <plugin>
+        <groupId>com.diffplug.spotless</groupId>
+        <artifactId>spotless-maven-plugin</artifactId>
+        <version>${spotless.version}</version>
+        <configuration>
+          <java>
+            <palantirJavaFormat>
+              <version>${palantir.version}</version>
+            </palantirJavaFormat>
+            <removeUnusedImports/>
+            <importOrder>
+              <order>java,javax,jakarta,,ua.kite</order>
+            </importOrder>
+            <trimTrailingWhitespace/>
+            <endWithNewline/>
+          </java>
+          <pom>
+            <sortPom>
+              <expandEmptyElements>false</expandEmptyElements>
+            </sortPom>
+          </pom>
+        </configuration>
+        <executions>
+          <execution>
+            <goals>
+              <goal>check</goal>
+            </goals>
+            <phase>validate</phase>
+          </execution>
+        </executions>
+      </plugin>
+
+      <!-- Інтеграційні тести (*IT) окремо від юніт-тестів: вони йдуть у verify. -->
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-failsafe-plugin</artifactId>
+        <executions>
+          <execution>
+            <goals>
+              <goal>integration-test</goal>
+              <goal>verify</goal>
+            </goals>
+          </execution>
+        </executions>
+      </plugin>
+    </plugins>
+  </build>
+</project>

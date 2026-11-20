@@ -1,0 +1,105 @@
+spring:
+  application:
+    name: api-gateway
+  main:
+    # Шлюз реактивний (Spring Cloud Gateway на Netty), сервлетного стека тут немає.
+    web-application-type: reactive
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      timeout: 500ms
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Токени Keycloak видає з iss=http://localhost:8081 (так їх бачить браузер);
+          # у compose ключі тягнуться всередині мережі — SPRING_..._JWK_SET_URI у kite-infra.
+          issuer-uri: http://localhost:8081/realms/kite
+          jwk-set-uri: http://localhost:8081/realms/kite/protocol/openid-connect/certs
+          # Audience, яку Keycloak додає всім клієнтам realm-у kite (12.3).
+          audiences: kite-api
+
+  cloud:
+    gateway:
+      server:
+        webflux:
+          # Тайм-аути 2 с (5.4, п. 7): з'єднання і повна відповідь сервіса.
+          httpclient:
+            connect-timeout: 2000
+            response-timeout: 2s
+          # Шлюз сам ставить X-Request-Id (RequestIdFilter); X-Forwarded-* — штатно.
+          forwarded:
+            enabled: false
+
+server:
+  port: 8080
+  shutdown: graceful
+
+kite:
+  # Тег образу, з якого піднявся контейнер — його підставляє compose у kite-infra.
+  version: ${KITE_IMAGE_TAG:dev}
+
+  gateway:
+    timeout: 2s
+
+    # Адреси за іменами контейнерів у kite-infra. Локально перевизначаються
+    # змінними: KITE_GATEWAY_SERVICES_SHIPMENT=http://localhost:8082
+    services:
+      customer: http://customer-service:8080
+      business: http://business-service:8080
+      shipment: http://shipment-service:8080
+      pricing: http://pricing-service:8080
+      network: http://network-service:8080
+      logistics: http://logistics-service:8080
+      tracking: http://tracking-service:8080
+      payment: http://payment-service:8080
+      care: http://care-service:8080
+      audit: http://audit-service:8080
+      scan: http://scan-service:8080
+      realtime: http://realtime-service:8080
+      locker: http://locker-service:8080
+
+    rate-limits:
+      # Користувач (за sub) або IP без токена: 20 запитів/с, сплеск до 40.
+      default:
+        replenish-rate: 20
+        burst-capacity: 40
+        requested-tokens: 1
+      # Вхід (OTP, перевірка коду, refresh) на IP: 10 запитів на хвилину —
+      # 1 токен/с, запит коштує 6, у бакеті 60.
+      auth:
+        replenish-rate: 1
+        burst-capacity: 60
+        requested-tokens: 6
+
+    circuit-breaker:
+      sliding-window-size: 20
+      minimum-number-of-calls: 10
+      failure-rate-threshold: 50
+      wait-duration-in-open-state: 10s
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+  health:
+    # Redis не валить readiness: без нього шлюз працює, просто без rate limit.
+    redis:
+      enabled: false
+  metrics:
+    tags:
+      service: ${spring.application.name}
+
+logging:
+  pattern:
+    # Формат під Loki: рівень, трейс, сервіс, повідомлення.
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-}] %logger{24} - %msg%n"
