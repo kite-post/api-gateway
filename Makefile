@@ -10,7 +10,7 @@ MVN     := $(if $(wildcard ./mvnw),./mvnw,mvn)
 # Тег kite-contracts, за яким закріплений сервіс. Той самий номер лежить у
 # pom.xml властивістю kite-contracts.version; contracts-check стежить, щоб
 # вони не розійшлися.
-CONTRACTS_VERSION ?= 0.2.1
+CONTRACTS_VERSION ?= 0.3.0
 
 .DEFAULT_GOAL := help
 .PHONY: help build lint fmt test test-it verify image run up down clean contracts contracts-check rename
